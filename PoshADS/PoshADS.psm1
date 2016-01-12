@@ -3,7 +3,7 @@
     .SYNOPSIS
         List, extract, add, or remove alternate data streams from a given file in NTFS.
     .DESCRIPTION
-        This function takes a FileSystem object and can list/alter it's alternate data streams (ADS).
+        This function takes a [String] path to a file and can list, add, remove, and extract it's alternate data streams (ADS).
     .PARAMETER File
         Host File to manipulate ADS.
         Example:
@@ -53,53 +53,87 @@
     .FUNCTIONALITY
         General Command
     #>
-    [cmdletbinding()]
+    [cmdletbinding(DefaultParameterSetName="F")]
     param (
         [Parameter(Mandatory=$True,
+            Position=1,
             ValueFromPipeline=$True,
             ValueFromPipelineByPropertyName=$True,
-            HelpMessage='<File>')]
+            HelpMessage='<File> to list all alternate data streams from.',
+            ParameterSetName='F'
+        )]
+        [Parameter(Mandatory=$True,
+            Position=1,
+            ValueFromPipeline=$True,
+            ValueFromPipelineByPropertyName=$True,
+            HelpMessage='<File> to extract alternate data streams from.',
+            ParameterSetName='Ext'
+        )]
+        [Parameter(Mandatory=$True,
+            Position=1,
+            ValueFromPipeline=$True,
+            ValueFromPipelineByPropertyName=$True,
+            HelpMessage='<File> to add an alternate data stream to.',
+            ParameterSetName='Add'
+        )]
+        [Parameter(Mandatory=$True,
+            Position=1,
+            ValueFromPipeline=$True,
+            ValueFromPipelineByPropertyName=$True,
+            HelpMessage='<File> to remove all alternate data streams from.',
+            ParameterSetName='RA'
+        )]
+        [Parameter(Mandatory=$True,
+            Position=1,
+            ValueFromPipeline=$True,
+            ValueFromPipelineByPropertyName=$True,
+            HelpMessage='<File> to remove an alternate data stream from.',
+            ParameterSetName='RS'
+        )]
         [Alias('F')]
         [String]$File,
 
         [Parameter(Mandatory=$False,
             ValueFromPipeline=$False,
             ValueFromPipelineByPropertyName=$False,
-            HelpMessage='Extract all ADS from given <File>')]
+            HelpMessage='Extract all ADS from given <File>',
+            ParameterSetName='Ext')]
         [Alias('E')]
         [Switch]$Extract,
 
         [Parameter(Mandatory=$False,
             ValueFromPipeline=$False,
             ValueFromPipelineByPropertyName=$False,
-            HelpMessage='Add given file to ADS of <File>')]
+            HelpMessage='Add given file to ADS of <File>',
+            ParameterSetName='Add')]
         [Alias('A')]
         [String]$AddFile,
 
         [Parameter(Mandatory=$False,
             ValueFromPipeline=$False,
             ValueFromPipelineByPropertyName=$False,
-            HelpMessage='Remove all ADS from <File>')]
+            HelpMessage='Remove all ADS from <File>',
+            ParameterSetName='RA')]
         [Alias('RMA')]
         [Switch]$RemoveAll,
 
         [Parameter(Mandatory=$False,
             ValueFromPipeline=$False,
             ValueFromPipelineByPropertyName=$False,
-            HelpMessage='Remove an ADS from <File>')]
+            HelpMessage='Remove an ADS from <File>',
+            ParameterSetName='RS')]
         [Alias('RMS')]
         [String]$RemoveStream,
 
         [Parameter(Mandatory=$False,
             ValueFromPipeline=$False,
             ValueFromPipelineByPropertyName=$False,
-            HelpMessage='Output directory when extracting ADS files.')]
+            HelpMessage='Output directory when extracting ADS files.',
+            ParameterSetName='Ext')]
         [Alias('O')]
         [String]$OutputDirectory="ADSOutput"
-
-
-
     )
+
     Begin
     {
         #region FUNCTIONS
@@ -137,14 +171,14 @@
             )
 
             Retrieve-Streams -File $File | % {
-                $OutStreamName = $_.Stream -replace ":",""
+                $OutStreamName = $_.Stream -Replace ":",""
 
-                If (-Not (Test-Path "$($Out.FullName)\$($OutStreamName)")) {
-                    Write-Output "Extracting ${File}:$($_.Stream) to $($Out.FullName)\$($_.Stream)..."
-                    Get-Content $($File.FullName) -Stream "$Stream" | Add-Content "$($Out.FullName)\$($OutStreamName)"
+                If (-Not (Test-Path "$($Out.FullName)\$($File.Name)_$($OutStreamName)")) {
+                    Write-Output "Extracting $($File.Name):$($_.Stream) to $($Out.FullName)\$($File.Name)_$($OutStreamName)..."
+                    Get-Content $($File.FullName) -Stream "$Stream" | Add-Content "$($Out.FullName)\$($File.Name)_$($OutStreamName)"
                 }
                 Else {
-                    Write-Output "The stream ${File}:$($_.Stream) has already been extracted to $($Out.FullName)\$($OutStreamName)."
+                    Write-Output "The stream $($File.Name):$($_.Stream) has already been extracted to $($Out.FullName)\$($File.Name)_$($OutStreamName)."
                 }
             }
 
@@ -160,16 +194,16 @@
 
             Try {
                 $FileToAddName = $FileToAdd.Name
-                If(Get-Item $File -Stream * | Where { $_.Stream -eq $($FileToAddName) }) {
-                    Write-Output "The stream $($FileToAddName) already exists."
+                If(Retrieve-Streams -File $File | Where { $_.Stream -eq $($FileToAdd.Name) }) {
+                    Write-Output "The stream $($File.Name):$($FileToAddName) already exists."
                 }
                 Else {
-                    Write-Output "Adding stream ${File}:${FileToAddName}..."
+                    Write-Output "Adding stream $($File.Name):${FileToAddName}..."
                     Add-Content $($File.FullName) -Stream $($FileToAddName) -Value $(Get-Content $($FileToAdd.FullName))
                 }
             }
             Catch {
-                Write-Output "An error occured adding the file ${FileToAddName} to the ADS of file ${File}."
+                Write-Output "An error occured adding the file ${FileToAddName} to the ADS of file $($File.Name)."
                 Write-Error $_.Exception.Message
                 Throw $_.Exception           
             }
@@ -186,16 +220,22 @@
                 # Ignore :$DATA, as it is the main stream i.e. the file’s primary contents.
                 Retrieve-Streams -File $File | Where { $_.Stream -ne ':$DATA' } | % {
                     $s = $_.Stream
-                    Write-Output "Removing data stream $s..."
+                    Write-Output "Removing stream $($File.Name):${s}..."
                     Remove-Item $File -Stream $s
                 }
             }
             Else {
-                # Ignore :$DATA, as it is the main stream i.e. the file’s primary contents.
-                Retrieve-Streams -File $File | Where { $_.Stream -ne ':$DATA' -And $_.Stream -eq "$Stream" } | % {
-                    $s = $_.Stream
-                    Write-Output "Removing data stream $s..."
-                    Remove-Item $File -Stream $s
+                $Streams = Retrieve-Streams -File $File | Where { $_.Stream -ne ':$DATA' -And $_.Stream -eq "$Stream" }
+                If ($Streams.Length -gt 0) {
+                    # Ignore :$DATA, as it is the main stream i.e. the file’s primary contents.
+                    $Streams | % {
+                        $s = $_.Stream
+                        Write-Output "Removing stream $($File.Name):${s}..."
+                        Remove-Item $File -Stream $s
+                    }
+                }
+                Else {
+                    Write-Output "The stream $($File.Name):${Stream} does not exist."
                 }
             }
 
@@ -206,14 +246,17 @@
     }
     Process
     {
+        $Vb = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
         If (Test-Path $File) {
             $FileObject = Get-Item "$File"
-            $FileName = $FileObject.Name
 
-            Retrieve-Streams -File $FileObject -WriteOutput
+            # Display all Streams on only File param pass or Verbose
+            If ($PSBoundParameters.Count -eq 1 -Or $Vb) {
+                Retrieve-Streams -File $FileObject -WriteOutput
+                Write-Output ""
+            }
         
             If ($AddFile) {
-                Write-Output ""
                 If (-Not (Test-Path $AddFile)) {
                     Write-Error "The file to add could not be found."
                     Break
@@ -226,7 +269,7 @@
 
             If($Extract) {
                 If (-Not (Test-Path "$OutputDirectory")) {
-                    Write-Output "`r`nThe specified output directory does not exist, creating it..."
+                    Write-Output "The specified output directory does not exist, creating it..."
                     Try {
                         $Out = New-Item $OutputDirectory -ItemType Directory
                     }
@@ -240,17 +283,13 @@
                     $Out = Get-Item "$OutputDirectory"
                 }
 
-                Write-Output ""
                 Extract-Streams -File $FileObject -Out $Out
-
             }
 
             If($RemoveAll) {
-                Write-Output ""
                 Remove-Streams -File $FileObject
             }
             ElseIf($RemoveStream) {
-                Write-Output ""
                 Remove-Streams -File $FileObject -Stream "$RemoveStream"
             }
         }
