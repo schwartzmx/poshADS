@@ -51,9 +51,9 @@ PoshADS $hostFile
 Import-Module PoshADS
 
 # Remove all "downloaded from internet" data streams
-Get-ChildItem C:\Users\pschwartz\Downloads -Recurse | PoshADS -RemoveStream "Zone.Identifier" | Out-Null
+Get-ChildItem C:\Users\pschwartz\Downloads -Recurse | % { PoshADS $_.FullName -RemoveStream "Zone.Identifier" | Out-Null }
 
-Get-ChildItem C:\Users\pschwartz\Downloads -Recurse | PoshADS
+Get-ChildItem C:\Users\pschwartz\Downloads -Recurse | % { PoshADS $_.FullName }
 ```
 
 ###License

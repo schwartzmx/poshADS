@@ -247,7 +247,8 @@
     Process
     {
         $Vb = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
-        If (Test-Path $File) {
+        $IsDirectory = Test-Path "$File" -PathType Container
+        If (-Not $IsDirectory -And (Test-Path "$File" -PathType Leaf)) {
             $FileObject = Get-Item "$File"
 
             # Display all Streams on only File param pass or Verbose
@@ -294,7 +295,9 @@
             }
         }
         Else {
-            Write-Output "The File specified could not be found."
+            If (-Not $IsDirectory) {
+                Write-Output "The File specified: $File could not be found."
+            }
         }
     }
 }
